@@ -38,7 +38,7 @@ ufw status verbose
 touch /etc/nginx/conf.d/default.conf
 cat <<EOF >/etc/nginx/conf.d/nextcloud.conf
 server {
-server_name YOUR.DEDYN.IO;
+server_name bmbonly.com;
 listen 80 default_server;
 listen [::]:80 default_server;
 location ^~ /.well-known/acme-challenge {
@@ -50,7 +50,7 @@ return 301 https://\$host\$request_uri;
 }
 }
 server {
-server_name YOUR.DEDYN.IO;
+server_name bmbonly.com;
 listen 443 ssl http2 default_server;
 listen [::]:443 ssl http2 default_server;
 root /var/www/nextcloud/;
@@ -92,8 +92,6 @@ set \$path_info \$fastcgi_path_info;
 try_files \$fastcgi_script_name =404;
 include fastcgi_params;
 include php_optimization.conf;
-fastcgi_pass php-handler;
-fastcgi_param HTTPS on;
 }
 location ~ ^\/(?:index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|oc[ms]-provider\/.+).php(?:\$|\/) {
 fastcgi_split_path_info ^(.+?.php)(\/.*|)\$;
@@ -101,8 +99,6 @@ set \$path_info \$fastcgi_path_info;
 try_files \$fastcgi_script_name =404;
 include fastcgi_params;
 include php_optimization.conf;
-fastcgi_pass php-handler;
-fastcgi_param HTTPS on;
 }
 location ~ ^\/(?:updater|oc[ms]-provider)(?:\$|\/) {
 try_files \$uri/ =404;
@@ -180,7 +176,10 @@ EOF
 ###create a nginx optimization file
 touch /etc/nginx/optimization.conf
 cat <<EOF >>/etc/nginx/optimization.conf
+fastcgi_hide_header X-Powered-By;
 fastcgi_read_timeout 3600;
+fastcgi_send_timeout 3600;
+fastcgi_connect_timeout 3600;
 fastcgi_buffers 64 64K;
 fastcgi_buffer_size 256k;
 fastcgi_busy_buffers_size 3840K;
@@ -200,8 +199,10 @@ touch /etc/nginx/php_optimization.conf
 cat <<EOF >>/etc/nginx/php_optimization.conf
 fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
 fastcgi_param PATH_INFO \$fastcgi_path_info;
+fastcgi_param HTTPS on;
 fastcgi_param modHeadersAvailable true;
 fastcgi_param front_controller_active true;
+fastcgi_pass php-handler;
 fastcgi_intercept_errors on;
 fastcgi_request_buffering off;
 fastcgi_cache_valid 404 1m;
