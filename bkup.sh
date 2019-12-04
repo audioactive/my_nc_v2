@@ -1,16 +1,30 @@
 #!/bin/bash
+
+set -e
+
 # mount bkup disk
-mount /dev/sdd1 /bkup
-# enbale Maintenance Mode to prevent users from working with Nextcloud
+if grep -qs "/bkup" /proc/mounts;
+then
+	echo "Backup drive is mounted!"
+else
+	mount /bkup
+	echo "Successfully mounted backup drive!"
+fi
+
+# enable Maintenance Mode to prevent users from working with Nextcloud
 sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --on
-# create directory first: mkdir /backup -p
-BACKUP_STORE=/bkup
-# create directory first: mkdir /backup-repository -p
-ARCHIVE_STORE=/bkup/bkup-repo
-# declare dateformat and numbering of backups
-CURRENT_TIME_FORMAT="%w"
+
+# folder where the final tar backup files will be saved to
+final_target_path="/bkup"
+mkdir -p "${final_target_path}"
+
+# folder where the files will be copied to initially before compressing them
+int_target_path="/bkup_repo"
+mkdir -p "${int_target_path}"
+
 # print start date/time 
 echo "START: $(date)"
+
 # list of folders to be backed up, feel free to add/remove directories
 FOLDERS_TO_BACKUP=(
 "/root/"
@@ -27,44 +41,45 @@ FOLDERS_TO_BACKUP=(
 "/nc_data/msp/"
 "/nc_data/bia/"
 )
-# declare the backup filename
-ARCHIVE_FILE="$ARCHIVE_STORE/nc_backup_$(date +$CURRENT_TIME_FORMAT).tar.gz"
-# change directory
-cd $BACKUP_STORE
-# start rsync to back up the folders
-for FOLDER in ${FOLDERS_TO_BACKUP[@]}
+
+for item in "${FOLDERS_TO_BACKUP[@]}"
 do
-	if [ -d "$FOLDER" ];
+	if [ -d "$item" ];
 	then
-		echo "Copying $FOLDER..."
-		rsync -AaRx --delete $FOLDER $BACKUP_STORE
+		echo "Copying $item"
+		include_args="${include_args} ${item}"
 	else
-		echo "Skipping $FOLDER (does not exist!)"
+		echo "Skipping $item (does not exist!)"
 	fi
 done
+
+rsync -AaRx --delete ${include_args} ${int_target_path}
+
 # copy the fstab
-[ -f /etc/fstab ] && cp /etc/fstab $BACKUP_STORE/etc/
-# copy the mail configuration
-[ -f /etc/msmtprc ] && cp /etc/msmtprc $BACKUP_STORE/etc/
-# create a database back up
-mysqldump --single-transaction -hlocalhost -uheman -p`H3m4n@db` nxtcld > $BACKUP_STORE/ncdb_`date +"%w"`.sql
+[ -f /etc/fstab ] && cp /etc/fstab ${int_target_path}
+
+# create a database bkup
+mysqldump --single-transaction -hlocalhost -uheman -p"H3m4n@db" nxtcld > $int_target_path/ncdb_`date +"%w"`.sql
+
 # print the database backup size
-mysql -hlocalhost -uheman -p`H3m4n@db` -e "SELECT table_schema 'DB',round(sum(data_length+index_length)/1024/1024,1) 'Size (MB)' from information_schema.tables WHERE table_schema = 'nxtcld';"
-# create the directories
-mkdir -p $(dirname $ARCHIVE_FILE)
-# compress all data
-tar -cpzf $ARCHIVE_FILE .
+mysql -hlocalhost -uheman -p"H3m4n@db" -e "SELECT table_schema 'DB',round(sum(data_length+index_length)/1024/1024,1) 'Size (MB)' from information_schema.tables WHERE table_schema = 'nxtcld';"
+
+FILENAME="$final_target_path/nxtcld_bkup-$(date +%-Y%-m%-d)-$(date +%-T).tar.gz"
+cd $final_target_path
+tar -cpzf $FILENAME $int_target_path
+
 # print back up size
-echo "nc_backup size: $(stat --printf='%s' $ARCHIVE_FILE | numfmt --to=iec)"
+echo "nc_backup size: $(stat --printf='%s' $FILENAME | numfmt --to=iec)"
+
 # stop all services
 /usr/sbin/service nginx stop
 /usr/sbin/service mysql stop
 /usr/sbin/service redis-server stop
 /usr/sbin/service php7.3-fpm stop
-# remove copied files 
-[ -f $BACKUP_STORE/ncdb_`date +"%w"`.sql ] && rm -f $BACKUP_STORE/ncdb_`date +"%w"`.sql
-[ -f /etc/msmtprc ] && rm -f $BACKUP_STORE/etc/msmtprc
-[ -f /etc/fstab ] && rm -f $BACKUP_STORE/etc/fstab
+
+# remove copied files
+rm -r $int_target_path
+
 # if ModSecurity is enabled remove the '#'
 #echo "+---------+-------+--------------+"
 #echo "|   ModeSec Access denied        |"
@@ -75,25 +90,35 @@ echo "nc_backup size: $(stat --printf='%s' $ARCHIVE_FILE | numfmt --to=iec)"
 #echo "+---------+-------+--------------+"
 #/bin/cat /var/log/modsec_audit.log | egrep -i "warning\." | egrep -i "id \"[0-9]{6}\"" -o | sort | uniq -c | sort -nr
 #echo "+---------+-------+--------------+"
+
 # restart all services
 /usr/sbin/service nginx stop
 /usr/sbin/service mysql restart
 /usr/sbin/service redis-server restart
+
 # enable if Collabora and/or OnlyOffice are used
 #/usr/bin/docker restart COLLABORAOFFICE
 #/usr/bin/docker restart ONLYOFFICE
+
 /usr/sbin/service php7.3-fpm restart
 /usr/sbin/service nginx restart
+
 # disable maintanance mode
 sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --off
+
 # Nextcloud optimizations
 /root/optimize.sh
+
 # check for Nextcloud updates
 echo "Nextcloud apps are checked for updates..."
 /root/upgrade.sh
+
 # print end date/time
 echo "END: $(date)"
+
 # substitute your.name@dedyn.io properly to send backup status mails and enable it
 #mail -s "Backup - $(date +$CURRENT_TIME_FORMAT)" -a "FROM: Your Name <your.name@dedyn.io>" your.name@dedyn.io < /path/to/your/logfile
-umount /dev/sdd1
+cd /
+umount /bkup
+
 exit 0
