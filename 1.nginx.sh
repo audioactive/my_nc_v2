@@ -69,7 +69,7 @@ upstream php-handler {
 server unix:/run/php/php7.3-fpm.sock;
 }
 set_real_ip_from 127.0.0.1;
-set_real_ip_from 192.168.1.0/24;
+#set_real_ip_from 192.168.1.0/24;
 real_ip_header X-Forwarded-For;
 real_ip_recursive on;
 include /etc/nginx/mime.types;

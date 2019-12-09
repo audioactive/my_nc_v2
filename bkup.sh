@@ -120,5 +120,4 @@ echo "END: $(date)"
 #mail -s "Backup - $(date +$CURRENT_TIME_FORMAT)" -a "FROM: Your Name <your.name@dedyn.io>" your.name@dedyn.io < /path/to/your/logfile
 cd /
 umount /bkup
-
 exit 0
