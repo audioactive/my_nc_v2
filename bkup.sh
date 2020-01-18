@@ -3,11 +3,11 @@
 set -e
 
 # mount bkup disk
-if grep -qs "/bkup" /proc/mounts;
+if grep -qs "/magentacloud" /proc/mounts;
 then
 	echo "Backup drive is mounted!"
 else
-	mount /bkup
+	mount /magentacloud
 	echo "Successfully mounted backup drive!"
 fi
 
@@ -15,7 +15,7 @@ fi
 sudo -u www-data php /var/www/nextcloud/occ maintenance:mode --on
 
 # folder where the final tar backup files will be saved to
-final_target_path="/bkup"
+final_target_path="/magentacloud"
 mkdir -p "${final_target_path}"
 
 # folder where the files will be copied to initially before compressing them
@@ -37,9 +37,8 @@ FOLDERS_TO_BACKUP=(
 "/etc/pam.d/"
 "/etc/ssl/"
 "/var/www/"
-"/nc_data/heman/"
-"/nc_data/msp/"
-"/nc_data/bia/"
+"/home/"
+"/var/lib/"
 )
 
 for item in "${FOLDERS_TO_BACKUP[@]}"
@@ -59,10 +58,10 @@ rsync -AaRx --delete ${include_args} ${int_target_path}
 [ -f /etc/fstab ] && cp /etc/fstab ${int_target_path}
 
 # create a database bkup
-mysqldump --single-transaction -hlocalhost -uheman -p"H3m4n@db" nxtcld > $int_target_path/ncdb_`date +"%w"`.sql
+mysqldump --single-transaction -hlocalhost -u nextcloud -p"1qwertzui" nextcloud > $int_target_path/ncdb_`date +"%w"`.sql
 
 # print the database backup size
-mysql -hlocalhost -uheman -p"H3m4n@db" -e "SELECT table_schema 'DB',round(sum(data_length+index_length)/1024/1024,1) 'Size (MB)' from information_schema.tables WHERE table_schema = 'nxtcld';"
+mysql -hlocalhost -unextcloud -p"1qwertzui" -e "SELECT table_schema 'DB',round(sum(data_length+index_length)/1024/1024,1) 'Size (MB)' from information_schema.tables WHERE table_schema = 'nextcloud';"
 
 FILENAME="$final_target_path/nxtcld_bkup-$(date +%-Y%-m%-d)-$(date +%-T).tar.gz"
 cd $final_target_path
